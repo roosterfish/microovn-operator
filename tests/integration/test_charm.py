@@ -490,3 +490,27 @@ def test_upgrade_from_previous_release(juju_lxd: jubilant.Juju, charm_path: Path
         return True
     if max_base_from_release_track(rel) in os.path.basename(charm_path):
         upgrade_from_channel_test(juju_lxd, charm_path, app_name, rel + "/stable")
+
+
+def test_token_distributor_multiple_microovn(
+    juju_lxd: jubilant.Juju, charm_path: Path, app_name: str
+):
+    juju_lxd.deploy(TOKEN_DISTRIBUTOR_CHARM, channel=TOKEN_DISTRIBUTOR_CHANNEL)
+    microovns = [f"{app_name}-terezi", f"{app_name}-vriska"]
+
+    for microovn in microovns:
+        juju_lxd.deploy(charm_path, channel="latest/edge", app=microovn)
+        juju_lxd.integrate(microovn, TOKEN_DISTRIBUTOR_CHARM)
+
+    juju_lxd.wait(jubilant.all_active, timeout=600)
+    juju_lxd.wait(jubilant.all_agents_idle, timeout=600)
+
+    cluster_output = juju_lxd.exec("microovn cluster list --format csv", unit=f"{microovns[0]}/0")
+    assert len(cluster_output.stdout.split("\n")) == 3
+
+    outputs = []
+    for microovn in microovns:
+        cluster_output = juju_lxd.exec("microovn cluster list --format csv", unit=f"{microovn}/0")
+        outputs.append("\n".join(sorted(cluster_output.stdout.split("\n"))))
+
+    assert outputs[0] == outputs[1]
